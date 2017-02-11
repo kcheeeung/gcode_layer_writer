@@ -28,8 +28,8 @@ def load_raw_images(folder_path, check_dims=True):
 #         try:
         image = skio.imread(os.path.join(folder_path, image_path))
         images.append(image)
-#         except Exception:
-#             print("{} cannot be opened".format(image_path))
+        except Exception:
+            print("{} cannot be opened".format(image_path))
 
     if check_dims:
         assert all((image.shape == images[0].shape for image in images)), "images do not have equal dimensions"
