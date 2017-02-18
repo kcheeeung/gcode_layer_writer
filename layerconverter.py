@@ -12,7 +12,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.collections import LineCollection
 
 def write_json(filename):
-	data = {"x":0, "y":0, "z":0, "pwm":0, "usecs": 100, "unitsize":1, "folder":"test_layers"}
+	data = {"x":0, "y":0, "z":0, "heatbed_temp":37, "usecs": 100, "unitsize":1, "folder":"test_layers"}
 	with open(filename, "w") as fp:
 		json.dump(data, fp)
 
@@ -89,24 +89,25 @@ def convert_to_gcode(binary_layers, usecs=100, grid_unit=0.5, start_x=40, start_
 
     return gcommands
 
-def write_gcode(gcommands, gcode_path, pwm=100):
-    
-    start_gcode='G21 ;metric values\nG90 ;absolute positioning\n'+\
-    'G28 X0 Y0 ;move X/Y to min endstops\nM104 S0 ;extruder heater off'
-    'M190 S37\n'+\
-    'Put printing message on LCD screen\nM117 Printing...'
-    end_gcode='M84 ;steppers off\nM140 S0\n;done printing'
-    with open(gcode_path, 'w') as gcode_file:
-        gcode_file.write(start_gcode)
-        gcode_file.write('\n')
-        
-        for gcommand in gcommands:
-            gcode_file.write(str(gcommand))
+def write_gcode(gcommands, gcode_path, heatbed_temp=37):
+    if (heatbed_temp <= 200):
+        start_gcode='G21 ;metric values\nG90 ;absolute positioning\n'+\
+        'G28 X0 Y0 ;move X/Y to min endstops\n'+\
+        'M190 S' + str(min(heatbed_temp, 200)) + ' ; set heatbed temp\nM117 Printing...'
+
+        end_gcode='M84 ;steppers off\nM140 S0 ; turn off heatbed\n;done printing'
+        with open(gcode_path, 'w') as gcode_file:
+            gcode_file.write(start_gcode)
             gcode_file.write('\n')
-        
-        gcode_file.write(end_gcode)
-        gcode_file.write('\n')
-        
+            
+            for gcommand in gcommands:
+                gcode_file.write(str(gcommand))
+                gcode_file.write('\n')
+            
+            gcode_file.write(end_gcode)
+            gcode_file.write('\n')
+    else:
+            print("{} > max temp 200".format(heatbed_temp))
 def graph(gcommands):
     #3d
     fig = plt.figure(figsize=(10,10))
@@ -145,7 +146,7 @@ plt.imshow(binarys[0], cmap=plt.get_cmap('gray'))
 
 
 gcommands = convert_to_gcode(binarys, usecs= data["usecs"], grid_unit=data["unitsize"], start_x=data["x"], start_y=data["y"])
-write_gcode(gcommands, 'test.gcode', pwm=100)
+write_gcode(gcommands, 'test.gcode', data["heatbed_temp"])
 graph(gcommands)
 
 

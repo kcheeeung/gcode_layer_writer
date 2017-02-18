@@ -1,7 +1,8 @@
 G21 ;metric values
 G90 ;absolute positioning
 G28 X0 Y0 ;move X/Y to min endstops
-M104 S0 ;extruder heater off
+M190 S37 ; set heatbed temp
+M117 Printing...
 G1 X31 Y0 ;material 1
 M400 ;wait for position
 M430 S500 ;send pulse
@@ -9219,5 +9220,5 @@ G1 X31 Y31 ;material 1
 M400 ;wait for position
 M430 S500 ;send pulse
 M84 ;steppers off
-M140 S0
+M140 S0 ; turn off heatbed
 ;done printing
