@@ -12,7 +12,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.collections import LineCollection
 
 def write_json(filename):
-	data = {"x":0, "y":0, "z":0, "pwm":0, "unitsize":0, "folder":"test_layers"}
+	data = {"x":0, "y":0, "z":0, "pwm":0, "unitsize":1, "folder":"test_layers"}
 	with open(filename, "w") as fp:
 		json.dump(data, fp)
 
@@ -25,9 +25,9 @@ def load_raw_images(folder_path, check_dims=True):
     images = []
 
     for image_path in os.listdir(folder_path):
-#         try:
-        image = skio.imread(os.path.join(folder_path, image_path))
-        images.append(image)
+        try:
+            image = skio.imread(os.path.join(folder_path, image_path))
+            images.append(image)
         except Exception:
             print("{} cannot be opened".format(image_path))
 
@@ -35,6 +35,8 @@ def load_raw_images(folder_path, check_dims=True):
         assert all((image.shape == images[0].shape for image in images)), "images do not have equal dimensions"
     
     return images
+
+
 
 def convert_to_binary(images):
     grays = [skcolor.rgb2gray(image) for image in images]
@@ -111,15 +113,18 @@ def graph(gcommands):
     ax = fig.add_subplot(111, projection='3d')
     for gcommand in gcommands:
         ax.scatter(gcommand.x, gcommand.y, gcommand.z)
-
+        #print (gcommand.x, gcommand.y, gcommand.z)
     ax.set_xlabel('x')
     ax.set_ylabel('y')
     ax.set_zlabel('z')
 
     plt.show()
 
+#write_json("config.json")
+data = load_json("config.json")
 
-raws = load_raw_images('test_layers')
+
+raws = load_raw_images(data["folder"])
 
 print(raws[0].shape)
 plt.figure()
@@ -137,8 +142,10 @@ binarys = convert_to_binary(resizes)
 print(binarys[0].shape)
 plt.figure()
 plt.imshow(binarys[0], cmap=plt.get_cmap('gray'))
-write_json("config.json")
-data = load_json("config.json")
+
+
 gcommands = convert_to_gcode(binarys, grid_unit=data["unitsize"], start_x=data["x"], start_y=data["y"])
 write_gcode(gcommands, 'test.gcode', pwm=100)
 graph(gcommands)
+
+
