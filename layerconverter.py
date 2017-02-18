@@ -12,7 +12,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.collections import LineCollection
 
 def write_json(filename):
-	data = {"x":0, "y":0, "z":0, "pwm":0, "unitsize":1, "folder":"test_layers"}
+	data = {"x":0, "y":0, "z":0, "pwm":0, "usecs": 100, "unitsize":1, "folder":"test_layers"}
 	with open(filename, "w") as fp:
 		json.dump(data, fp)
 
@@ -55,22 +55,22 @@ def resize_images(images, size):
  
 
 class GCommand(object):
-    def __init__(self, x, y, z, material, wait=100):
+    def __init__(self, x, y, z, material, usecs=100):
         self.x = x
         self.y = y
         self.z = z
         self.material = material
-        self.wait = wait
+        self.usecs = usecs
     
     def __str__(self):
         if self.material == 0.0:
-            return "G1 X{} Y{} ;material {}\nM106 ;fan on\nG4 P{}\nM107 ;fan off"\
-            .format(self.x, self.y, self.material, self.wait)
+            return "G1 X{} Y{} ;material {}\nM400 ;wait for position\nM430 S{} ;send pulse"\
+            .format(self.x, self.y, self.material, self.usecs)
         else:
-            return "G1 X{} Y{} ;material {}\nM106 ;fan on\nG4 P{}\nM107 ;fan off"\
-            .format(self.x, self.y, self.material, self.wait)
+            return "G1 X{} Y{} ;material {}\nM400 ;wait for position\nM430 S{} ;send pulse"\
+            .format(self.x, self.y, self.material, self.usecs)
 # so we have pattern/path but not yet droplets?
-def convert_to_gcode(binary_layers, grid_unit=0.5, start_x=40, start_y=50, flip_flop=True):
+def convert_to_gcode(binary_layers, usecs=100, grid_unit=0.5, start_x=40, start_y=50, flip_flop=True):
     gcommands = []
     num_layers = len(binary_layers)
     for i in range(num_layers):
@@ -83,7 +83,8 @@ def convert_to_gcode(binary_layers, grid_unit=0.5, start_x=40, start_y=50, flip_
                 gcommand = GCommand(grid_x * grid_unit + start_x, \
                                     grid_y * grid_unit + start_y, \
                                     i*grid_unit, \
-                                    binary_layers[i][grid_y, grid_x])
+                                    binary_layers[i][grid_y, grid_x], \
+                                    usecs)
                 gcommands.append(gcommand)
 
     return gcommands
@@ -91,11 +92,10 @@ def convert_to_gcode(binary_layers, grid_unit=0.5, start_x=40, start_y=50, flip_
 def write_gcode(gcommands, gcode_path, pwm=100):
     
     start_gcode='G21 ;metric values\nG90 ;absolute positioning\n'+\
-    'G28 X0 Y0 ;move X/Y to min endstops\nM104 S0 ;extruder heater off\n'+\
-    'M106 S' + str(pwm) + ';fan on\n'+\
+    'G28 X0 Y0 ;move X/Y to min endstops\nM104 S0 ;extruder heater off'
     'M190 S37\n'+\
     'Put printing message on LCD screen\nM117 Printing...'
-    end_gcode='M84 ;steppers off\nM107 ;fan off\nM140 S0\n;done printing'
+    end_gcode='M84 ;steppers off\nM140 S0\n;done printing'
     with open(gcode_path, 'w') as gcode_file:
         gcode_file.write(start_gcode)
         gcode_file.write('\n')
@@ -144,8 +144,9 @@ plt.figure()
 plt.imshow(binarys[0], cmap=plt.get_cmap('gray'))
 
 
-gcommands = convert_to_gcode(binarys, grid_unit=data["unitsize"], start_x=data["x"], start_y=data["y"])
+gcommands = convert_to_gcode(binarys, usecs= data["usecs"], grid_unit=data["unitsize"], start_x=data["x"], start_y=data["y"])
 write_gcode(gcommands, 'test.gcode', pwm=100)
 graph(gcommands)
+
 
 
