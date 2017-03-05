@@ -1,8 +1,12 @@
 import json
 import os
 import numpy as np
+from PIL import Image
+from PIL import ImageOps
 from skimage import color as skcolor
 from skimage import io as skio
+from skimage import novice as sknov
+from skimage import draw as skdr
 import matplotlib.pyplot as plt
 from scipy.misc import imresize
 from mpl_toolkits.mplot3d import Axes3D
@@ -146,9 +150,22 @@ def graph(gcommands):
 
     plt.show()
 
+def flip_image(file_path):
+    org = Image.open(file_path)
+    new = Image.new("RGBA",org.size)   
+    for x in range(org.size[0]):
+        flipped_x = org.size[0] - x - 1
+        for y in range(org.size[1]):
+            pixel = org.getpixel((x,y))
+            new.putpixel((flipped_x,y),pixel)
+    new = new.rotate(180)
+    new.save("{}.bmp".format(file_path),"bmp")
+
 def main():
     data = load_json("config.json")
     raws = load_raw_images(data["folder"])
+
+    # flipped = flip_image("cal_logo/flipped.png")
     
     size = (100, 120)
 
