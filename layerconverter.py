@@ -14,7 +14,18 @@ from matplotlib.collections import LineCollection
 
 
 class GCommand(object):
+    """Class representing a single action of the a microvalve"""
+
     def __init__(self, x, y, z, material, usecs=100):
+        """
+        Init
+
+        x, x location in gcode coords
+        y, y location in gcode coords
+        z, z location in gcode coords
+        material, material indicator
+        usecs, delay after movement
+        """
         self.x = x
         self.y = y
         self.z = z
@@ -22,6 +33,7 @@ class GCommand(object):
         self.usecs = usecs
     
     def __str__(self):
+        """Returns gcode representation of command"""
         if self.material == 0.0:
             return "G1 X{} Y{} ;material {}\nM400 ;wait for position\nG4 P100\nM430 S{} ;send pulse"\
             .format(self.x, self.y, self.material, self.usecs)
@@ -31,16 +43,36 @@ class GCommand(object):
 
 
 def write_json(filename):
+    """
+    Write a json config
+
+    filename, path to write to
+    """
     data = {"x":0, "y":0, "z":0, "heatbed_temp":37, "usecs": 100, "unitsize":1, "folder":"test_layers"}
     with open(filename, "w") as fp:
         json.dump(data, fp)
 
 def load_json(filename):
+    """
+    Load a json config
+
+    filename, path to load
+
+    return data, dictionary object with config
+    """
     with open(filename, "r") as fp:
         data = json.load(fp)
     return data
 
 def load_raw_images(folder_path, check_dims=True):
+    """
+    Load images in raw form
+
+    folder_path, path to folder with images
+    check_dims, boolean to assert that all images have the same size
+
+    returns images, list of ndarrays of dimension height x width x 3 (color channels)
+    """
     images = []
 
     for image_path in os.listdir(folder_path):
@@ -56,6 +88,14 @@ def load_raw_images(folder_path, check_dims=True):
     return images
 
 def convert_to_binary(images):
+    """
+    Flatten images to black and white. This function is useful for testing
+    but should be deprecated.
+
+    images, list of ndarrays of dimension height x width x 3 (color channels)
+
+    return binarys, list of ndarrays of dimension height x width (elements are 0 or 1)
+    """
     grays = [skcolor.rgb2gray(image) for image in images]
     binarys = []
 
@@ -68,9 +108,29 @@ def convert_to_binary(images):
     return binarys
 
 def resize_images(images, size):
+    """
+    Resize images
+
+    images, list of ndarrays
+    size, desired size
+
+    return list of resized images
+    """
     return [imresize(image, size) for image in images]
 
 def convert_to_gcode(binary_layers, usecs=600, grid_unit=0.5, z_unit=1.0, start_x=40, start_y=50, flip_flop=True):
+    """
+    Convert a list of binary images to gcommands. Iterates over each pixel
+    and forms a GCommand object
+
+    binary_layers, list of ndarrays of dimension height x width (elements are 0 or 1)
+    usecs, delay for GCommand
+    grid_unit, conversion of pixel to g-code dimensions in x and y
+    z_unit, conversion of pixel to g-code dimensions in z
+    start_x, start x location in g-code
+    start_y, start y location in g-code
+    flip_flop, boolean flip scans of left and right to minimize tracking
+    """
     gcommands = []
     num_layers = len(binary_layers)
     for grid_z in range(num_layers):
@@ -90,6 +150,13 @@ def convert_to_gcode(binary_layers, usecs=600, grid_unit=0.5, z_unit=1.0, start_
     return gcommands
 
 def write_gcode(gcommands, gcode_path, heatbed_temp=37):
+    """
+    Convert list of gcommands into .gcode file. Also prepend info
+
+    gcommands, list of GCommand objects
+    gcode_path, path to write output
+    heatbed_temp, start temp
+    """
     if (heatbed_temp <= 200):
         # start_gcode = 'M42 P4 S250\n' + 'G21 ;metric values\nG90 ;absolute positioning\n'+\
         # 'G28 X0 Y0 ;move X/Y to min endstops\n'+\
@@ -109,9 +176,14 @@ def write_gcode(gcommands, gcode_path, heatbed_temp=37):
             gcode_file.write(end_gcode)
             gcode_file.write('\n')
     else:
-            print("{} > max temp 200".format(heatbed_temp))
+        print("{} > max temp 200".format(heatbed_temp))
 
 def graph(gcommands):
+    """
+    Graph gcommands in 3d
+
+    gcommands, list of GCommand objects
+    """
     fig = plt.figure(figsize=(10,10))
     ax = fig.add_subplot(111, projection='3d')
     materials = set((gcommand.material for gcommand in gcommands))
@@ -151,6 +223,11 @@ def graph(gcommands):
     plt.show()
 
 def flip_image(file_path):
+    """
+    Flip image vertically and overwrite old save
+
+    file_path, location of image input
+    """
     org = Image.open(file_path)
     new = Image.new("RGBA",org.size)   
     for x in range(org.size[0]):
@@ -162,6 +239,9 @@ def flip_image(file_path):
     new.save("{}.bmp".format(file_path),"bmp")
 
 def main():
+    """
+    Cal printing demo
+    """
     data = load_json("config.json")
     raws = load_raw_images(data["folder"])
 
