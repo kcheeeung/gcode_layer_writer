@@ -5,13 +5,24 @@ from PIL import Image
 from PIL import ImageOps
 from skimage import color as skcolor
 from skimage import io as skio
-from skimage import novice as sknov
-from skimage import draw as skdr
 import matplotlib.pyplot as plt
 from scipy.misc import imresize
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.collections import LineCollection
 
+
+#define variables outside (default vals)
+#setter functions to update these values
+#allow for offset of valves (distance specified in config)
+#how to specify which valve you're using (based on black/white color)
+x = 0
+y = 0
+z = 0
+heatbed_temp = 37
+usecs = 100
+unitsize = 1
+# offset = 10
+#r = extruder 0, g, b
 
 class GCommand(object):
     def __init__(self, x, y, z, material, usecs=100):
@@ -22,22 +33,38 @@ class GCommand(object):
         self.usecs = usecs
     
     def __str__(self):
-        if self.material == 0.0:
-            return "G1 X{} Y{} ;material {}\nM400 ;wait for position\nG4 P100\nM430 S{} ;send pulse"\
+        # if self.material == 0.0:
+        #     return "G1 X{} Y{} ;material {}\nM400 ;wait for position\nG4 P100\nM430 S{} ;send pulse"\
+        #     .format(self.x, self.y, self.material, self.usecs)
+        if self.material == "valve 0":
+            return "T0; G0 E10; G1 X{} Y{} ;material {}\nM400 ;wait for position\nG4 P100\nM430 S{} ;send pulse"\
+            .format(self.x, self.y, self.material, self.usecs)
+        elif self.material == "valve 1":
+            return "T1; G0 E20; G1 X{} Y{} ;material {}\nM400 ;wait for position\nG4 P100\nM430 S{} ;send pulse"\
+            .format(self.x, self.y, self.material, self.usecs)
+        elif self.material == "valve 2":
+            return "T2; G0 E30; G1 X{} Y{} ;material {}\nM400 ;wait for position\nG4 P100\nM430 S{} ;send pulse"\
             .format(self.x, self.y, self.material, self.usecs)
         else:
-            return ""\
-            .format(self.x, self.y, self.material, self.usecs)
+            return ""
 
 
 def write_json(filename):
-    data = {"x":0, "y":0, "z":0, "heatbed_temp":37, "usecs": 100, "unitsize":1, "folder":"test_layers"}
+    data = {"x":x, "y":y, "z":z, "heatbed_temp":heatbed_temp, "usecs": usecs, "unitsize":unitsize,
+        "folder":"test_layers", "offset":offset}
     with open(filename, "w") as fp:
         json.dump(data, fp)
 
 def load_json(filename):
     with open(filename, "r") as fp:
         data = json.load(fp)
+    x = data["x"]
+    y = data["y"]
+    z = data["z"]
+    heatbed_temp = data["heatbed_temp"]
+    usecs = data["usecs"]
+    unitsize = data["unitsize"]
+    # offset = data["offset"]
     return data
 
 def load_raw_images(folder_path, check_dims=True):
@@ -55,22 +82,23 @@ def load_raw_images(folder_path, check_dims=True):
     
     return images
 
-def convert_to_binary(images):
-    grays = [skcolor.rgb2gray(image) for image in images]
-    binarys = []
+# def convert_to_binary(images):
+#     grays = [skcolor.rgb2gray(image) for image in images]
+#     binarys = []
 
-    for image in grays:
-        binary = image.copy().astype(np.uint8)
-        binary[image <= 0.5] = 1
-        binary[image > 0.5] = 0
-        binarys.append(binary)
+#     for image in grays:
+#         binary = image.copy().astype(np.uint8)
+#         binary[image <= 0.5] = 1
+#         binary[image > 0.5] = 0
+#         binarys.append(binary)
 
-    return binarys
+#     return binarys
 
 def resize_images(images, size):
     return [imresize(image, size) for image in images]
 
 def convert_to_gcode(binary_layers, usecs=600, grid_unit=0.5, z_unit=1.0, start_x=40, start_y=50, flip_flop=True):
+    # print (binary_layers[0][1][1])
     gcommands = []
     num_layers = len(binary_layers)
     for grid_z in range(num_layers):
@@ -80,14 +108,31 @@ def convert_to_gcode(binary_layers, usecs=600, grid_unit=0.5, z_unit=1.0, start_
             else:
                 x_iterator = range(binary_layers[grid_z].shape[1])
             for grid_x in x_iterator:
+                pixel = binary_layers[grid_z][grid_y, grid_x]
+                material = convert_to_material(pixel)
+
                 gcommand = GCommand(grid_x * grid_unit + start_x, \
                                     grid_y * grid_unit + start_y, \
                                     grid_z * z_unit, \
-                                    binary_layers[grid_z][grid_y, grid_x], \
+                                    material, \
+                                    # binary_layers[grid_z][grid_y, grid_x], \
                                     usecs)
                 gcommands.append(gcommand)
 
     return gcommands
+
+def convert_to_material(pixel):
+    red = pixel[0]
+    green = pixel[1]
+    blue = pixel[2]
+    if red == 255:
+        return "valve 0"
+    if green == 255:
+        return "valve 1"
+    if blue == 255:
+        return "valve 3"
+
+
 
 def write_gcode(gcommands, gcode_path, heatbed_temp=37):
     if (heatbed_temp <= 200):
@@ -170,13 +215,14 @@ def main():
     size = (100, 120)
 
     resizes = resize_images(raws, size)
-    binarys = convert_to_binary(resizes)
+    # binarys = convert_to_binary(resizes)
 
     # plt.figure()
     # plt.imshow(binarys[0], cmap=plt.get_cmap('gray'))
     # plt.show()
 
-    gcommands = convert_to_gcode(binarys, usecs= data["usecs"], grid_unit=data["unitsize"], start_x=data["x"], start_y=data["y"])
+    gcommands = convert_to_gcode(resizes, usecs= data["usecs"], grid_unit=data["unitsize"], start_x=data["x"], start_y=data["y"])
+    # gcommands = convert_to_gcode(binarys, usecs= data["usecs"], grid_unit=data["unitsize"], start_x=data["x"], start_y=data["y"])
     
     write_gcode(gcommands, 'test.gcode', data["heatbed_temp"])
     graph(gcommands)
