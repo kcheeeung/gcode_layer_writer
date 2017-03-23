@@ -24,6 +24,9 @@ unitsize = 1
 # offset = 10
 #r = extruder 0, g, b
 
+# color map for visualizing print
+COLOR_MAP = {"valve 0": 'r', "valve 1": 'g', "valve 3": 'b'}
+
 class GCommand(object):
     """Class representing a single action of the a microvalve"""
 
@@ -181,14 +184,16 @@ def convert_to_material(pixel):
     red = pixel[0]
     green = pixel[1]
     blue = pixel[2]
+    if (red, green, blue) == (255, 255, 255):
+        return None
     if red == 255:
         return "valve 0"
     if green == 255:
         return "valve 1"
     if blue == 255:
         return "valve 3"
-
-
+    else:
+        print("Unrecognized color: (r: {}, g: {}, b: {})".format(red, green, blue))
 
 def write_gcode(gcommands, gcode_path, heatbed_temp=37):
     """
@@ -219,7 +224,7 @@ def write_gcode(gcommands, gcode_path, heatbed_temp=37):
     else:
         print("{} > max temp 200".format(heatbed_temp))
 
-def graph(gcommands):
+def graph(gcommands, color_map=COLOR_MAP):
     """
     Graph gcommands in 3d
 
@@ -233,18 +238,21 @@ def graph(gcommands):
     for gcommand in gcommands:
         split_on_materials[gcommand.material].append(gcommand)
 
-    from matplotlib import colors as cnames
-    from itertools import cycle
-    color_names = [name for name in cnames.cnames]
-    color_names.sort()
-    colors = cycle(color_names)
-    color_map = dict(zip(materials, colors))
+    if color_map is None:
+        from matplotlib import colors as cnames
+        from itertools import cycle
+        color_names = [name for name in cnames.cnames]
+        color_names.sort()
+        colors = cycle(color_names)
+        color_map = dict(zip(materials, colors))
 
-    for material, split in split_on_materials.items():
+    for material, split in \
+        [(material, split) for (material, split) \
+        in split_on_materials.items() if material is not None]:
         xs = [gcommand.x for gcommand in split]
         ys = [gcommand.y for gcommand in split]
         zs = [gcommand.z for gcommand in split]
-        ax.scatter(xs, ys, zs, c=color_map[material])
+        ax.scatter(xs, ys, zs, c=color_map[material], label=material)
 
     xmin = min((gcommand.x for gcommand in gcommands))
     xmax = max((gcommand.x for gcommand in gcommands))
@@ -261,23 +269,30 @@ def graph(gcommands):
     ax.set_zlim3d(zmin, zmax)
     # ax.invert_xaxis()
 
+    plt.legend()
     plt.show()
 
-def flip_image(file_path):
+def flip_images(images):
     """
-    Flip image vertically and overwrite old save
+    Flip images vertically without overwriting
 
-    file_path, location of image input
+    images, list of height x width x 3 (color channels)
+
+    return flipped_images, images where each image is flipped vertically
     """
-    org = Image.open(file_path)
-    new = Image.new("RGBA",org.size)   
-    for x in range(org.size[0]):
-        flipped_x = org.size[0] - x - 1
-        for y in range(org.size[1]):
-            pixel = org.getpixel((x,y))
-            new.putpixel((flipped_x,y),pixel)
-    new = new.rotate(180)
-    new.save("{}.bmp".format(file_path),"bmp")
+    new_images = []
+
+    for image in images:
+        new_image = np.copy(image)
+        for y in range(image.shape[0]):
+            flipped_y = image.shape[0] - y - 1
+            for x in range(image.shape[1]):
+                pixel = image[y, x]
+                new_image[flipped_y, x] = pixel
+        new_images.append(new_image)
+
+    return(new_images)
+
 
 def main():
     """
@@ -286,18 +301,12 @@ def main():
     data = load_json("config.json")
     raws = load_raw_images(data["folder"])
 
-    # flipped = flip_image("cal_logo/flipped.png")
+    flipped_images = flip_images(raws)
     
-    size = (100, 120)
+    # size = (100, 100)
+    # resizes = resize_images(raws, size)
 
-    resizes = resize_images(raws, size)
-    # binarys = convert_to_binary(resizes)
-
-    # plt.figure()
-    # plt.imshow(binarys[0], cmap=plt.get_cmap('gray'))
-    # plt.show()
-
-    gcommands = convert_to_gcode(resizes, usecs= data["usecs"], grid_unit=data["unitsize"], start_x=data["x"], start_y=data["y"])
+    gcommands = convert_to_gcode(flipped_images, usecs= data["usecs"], grid_unit=data["unitsize"], start_x=data["x"], start_y=data["y"])
     # gcommands = convert_to_gcode(binarys, usecs= data["usecs"], grid_unit=data["unitsize"], start_x=data["x"], start_y=data["y"])
     
     write_gcode(gcommands, 'test.gcode', data["heatbed_temp"])
