@@ -47,6 +47,7 @@ class GCommand(object):
         """Returns gcode representation of command"""
         if self.material == "valve 0":
             return "T0; G0 E10; G1 X{} Y{} ;material {}\nM400 ;wait for position\nG4 P100\nM430 S{} ;send pulse"\
+            .format(self.x, self.y, self.material, self.usecs)
         elif self.material == "valve 1":
             return "T1; G0 E20; G1 X{} Y{} ;material {}\nM400 ;wait for position\nG4 P100\nM430 S{} ;send pulse"\
             .format(self.x, self.y, self.material, self.usecs)
