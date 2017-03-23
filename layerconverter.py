@@ -9,23 +9,29 @@ import matplotlib.pyplot as plt
 from scipy.misc import imresize
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.collections import LineCollection
+import warnings
+import functools
+
+def deprecated(func):
+    """This is a decorator which can be used to mark functions
+    as deprecated. It will result in a warning being emmitted
+    when the function is used."""
+
+    @functools.wraps(func)
+    def new_func(*args, **kwargs):
+        warnings.simplefilter('always', DeprecationWarning) #turn off filter 
+        warnings.warn("Call to deprecated function {}.".format(func.__name__), category=DeprecationWarning, stacklevel=2)
+        warnings.simplefilter('default', DeprecationWarning) #reset filter
+        return func(*args, **kwargs)
+
+    return new_func
 
 
-#define variables outside (default vals)
-#setter functions to update these values
-#allow for offset of valves (distance specified in config)
-#how to specify which valve you're using (based on black/white color)
-x = 0
-y = 0
-z = 0
-heatbed_temp = 37
-usecs = 100
-unitsize = 1
-# offset = 10
-#r = extruder 0, g, b
+### CONSTANTS
 
 # color map for visualizing print
 COLOR_MAP = {"valve 0": 'r', "valve 1": 'g', "valve 3": 'b'}
+
 
 class GCommand(object):
     """Class representing a single action of the a microvalve"""
@@ -113,29 +119,31 @@ def load_raw_images(folder_path, check_dims=True):
     
     return images
 
+@deprecated
 def convert_to_binary(images):
     """
     Flatten images to black and white. This function is useful for testing
-    but should be deprecated.
+    but should be avoided.
 
     images, list of ndarrays of dimension height x width x 3 (color channels)
 
     return binarys, list of ndarrays of dimension height x width (elements are 0 or 1)
     """
-    # grays = [skcolor.rgb2gray(image) for image in images]
-    # binarys = []
+    grays = [skcolor.rgb2gray(image) for image in images]
+    binarys = []
 
-#     for image in grays:
-#         binary = image.copy().astype(np.uint8)
-#         binary[image <= 0.5] = 1
-#         binary[image > 0.5] = 0
-#         binarys.append(binary)
+    for image in grays:
+        binary = image.copy().astype(np.uint8)
+        binary[image <= 0.5] = 1
+        binary[image > 0.5] = 0
+        binarys.append(binary)
 
-#     return binarys
+    return binarys
 
+@deprecated
 def resize_images(images, size):
     """
-    Resize images
+    Resize images. Useful for testing but deprecated as this makes designing unpredictable
 
     images, list of ndarrays
     size, desired size
@@ -224,7 +232,7 @@ def write_gcode(gcommands, gcode_path, heatbed_temp=37):
     else:
         print("{} > max temp 200".format(heatbed_temp))
 
-def graph(gcommands, color_map=COLOR_MAP):
+def graph(gcommands, color_map=COLOR_MAP, title="Print Preview"):
     """
     Graph gcommands in 3d
 
@@ -261,14 +269,16 @@ def graph(gcommands, color_map=COLOR_MAP):
     zmin = min((gcommand.z for gcommand in gcommands))
     zmax = max((gcommand.z for gcommand in gcommands))
 
-    ax.set_xlabel('x')
-    ax.set_ylabel('y')
-    ax.set_zlabel('z')
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.set_zlabel("z")
     ax.set_xlim3d(xmin, xmax)
     ax.set_ylim3d(ymin, ymax)
     ax.set_zlim3d(zmin, zmax)
-    # ax.invert_xaxis()
 
+    if title is not None:
+        plt.title(title)
+    
     plt.legend()
     plt.show()
 
@@ -293,21 +303,15 @@ def flip_images(images):
 
     return(new_images)
 
-
 def main():
     """
-    Cal printing demo
+    Printing demo
     """
     data = load_json("config.json")
     raws = load_raw_images(data["folder"])
-
     flipped_images = flip_images(raws)
-    
-    # size = (100, 100)
-    # resizes = resize_images(raws, size)
 
     gcommands = convert_to_gcode(flipped_images, usecs= data["usecs"], grid_unit=data["unitsize"], start_x=data["x"], start_y=data["y"])
-    # gcommands = convert_to_gcode(binarys, usecs= data["usecs"], grid_unit=data["unitsize"], start_x=data["x"], start_y=data["y"])
     
     write_gcode(gcommands, 'test.gcode', data["heatbed_temp"])
     graph(gcommands)
