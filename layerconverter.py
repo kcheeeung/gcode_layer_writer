@@ -1,14 +1,11 @@
 import json
 import os
 import numpy as np
-from PIL import Image
-from PIL import ImageOps
 from skimage import color as skcolor
 from skimage import io as skio
 import matplotlib.pyplot as plt
 from scipy.misc import imresize
 from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.collections import LineCollection
 import warnings
 import functools
 
