@@ -171,7 +171,6 @@ def convert_to_gcode(binary_layers, usecs=600, grid_unit=0.5, z_unit=1.0, start_
     start_y, start y location in g-code
     flip_flop, boolean flip scans of left and right to minimize tracking
     """
-
     gcommands = []
     num_layers = len(binary_layers)
     for grid_z in range(num_layers):
@@ -195,6 +194,13 @@ def convert_to_gcode(binary_layers, usecs=600, grid_unit=0.5, z_unit=1.0, start_
     return gcommands
 
 def convert_to_material(pixel):
+    """
+    Convert pixel color to printer material
+
+    pixel, (r, g, b) ndarray slice
+
+    return material constant if possible, otherwise ignore and print warning
+    """
     red = pixel[0]
     green = pixel[1]
     blue = pixel[2]
@@ -209,7 +215,7 @@ def convert_to_material(pixel):
     else:
         print("Unrecognized color: (r: {}, g: {}, b: {})".format(red, green, blue))
 
-def write_gcode(gcommands, gcode_path, heatbed_temp=37):
+def write_gcode(gcommands, gcode_path, heatbed_temp=37, start_gcode='M42 P4 S250\n', end_gcode='M42 P4 S255\n'):
     """
     Convert list of gcommands into .gcode file. Also prepend info
 
@@ -217,23 +223,15 @@ def write_gcode(gcommands, gcode_path, heatbed_temp=37):
     gcode_path, path to write output
     heatbed_temp, start temp
     """
-    if (heatbed_temp <= 200):
-        # start_gcode = 'M42 P4 S250\n' + 'G21 ;metric values\nG90 ;absolute positioning\n'+\
-        # 'G28 X0 Y0 ;move X/Y to min endstops\n'+\
-        # 'M190 S' + str(min(heatbed_temp, 200)) + ' ; set heatbed temp\nM117 Printing...'
-        # end_gcode= 'M42 P4 S255\n' + 'M84 ;steppers off\nM140 S0 ; turn off heatbed\n;done printing'
-        start_gcode = 'M42 P4 S250\n'
+    assert heatbed_temp <= 200, "{} > max temp 200".format(heatbed_temp)
 
-        end_gcode= 'M42 P4 S255\n'
-        with open(gcode_path, 'w') as gcode_file:
-            gcode_file.write(start_gcode)
-            
-            for gcommand in gcommands:
-                gcode_file.write(str(gcommand))
-            
-            gcode_file.write(end_gcode)
-    else:
-        print("{} > max temp 200".format(heatbed_temp))
+    with open(gcode_path, 'w') as gcode_file:
+        gcode_file.write(start_gcode)
+        
+        for gcommand in gcommands:
+            gcode_file.write(str(gcommand))
+        
+        gcode_file.write(end_gcode)
 
 def graph(gcommands, color_map=COLOR_MAP, title="Print Preview"):
     """
@@ -304,7 +302,7 @@ def flip_images(images):
                 new_image[flipped_y, x] = pixel
         new_images.append(new_image)
 
-    return(new_images)
+    return new_images
 
 def main():
     """
