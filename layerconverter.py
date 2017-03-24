@@ -183,12 +183,14 @@ def convert_to_gcode(binary_layers, usecs=600, grid_unit=0.5, z_unit=1.0, start_
             for grid_x in x_iterator:
                 pixel = binary_layers[grid_z][grid_y, grid_x]
                 material = convert_to_material(pixel)
-                gcommand = GCommand(grid_x * grid_unit + start_x, \
-                                    grid_y * grid_unit + start_y, \
-                                    grid_z * z_unit, \
-                                    material, \
-                                    usecs)
-                gcommands.append(gcommand)
+
+                if material is not MATERIAL_NOOP:
+                    gcommand = GCommand(grid_x * grid_unit + start_x, \
+                                        grid_y * grid_unit + start_y, \
+                                        grid_z * z_unit, \
+                                        material, \
+                                        usecs)
+                    gcommands.append(gcommand)
 
     return gcommands
 
