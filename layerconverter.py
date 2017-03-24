@@ -1,3 +1,4 @@
+from __future__ import division
 import json
 import os
 import numpy as np
@@ -8,6 +9,7 @@ from scipy.misc import imresize
 from mpl_toolkits.mplot3d import Axes3D
 import warnings
 import functools
+import itertools
 
 def deprecated(func):
     """This is a decorator which can be used to mark functions
@@ -109,21 +111,25 @@ def load_raw_images(folder_path, check_dims=True):
     folder_path, path to folder with images
     check_dims, boolean to assert that all images have the same size
 
-    returns images, list of ndarrays of dimension height x width x 3 (color channels)
+    return
+    images, list of ndarrays of dimension height x width x 3 (color channels)
+    paths, image paths
     """
     images = []
+    paths = []
 
     for image_path in sorted(os.listdir(folder_path)):
         try:
             image = skio.imread(os.path.join(folder_path, image_path))
             images.append(image)
+            paths.append(image_path)
         except Exception:
             print("{} cannot be opened".format(image_path))
 
     if check_dims:
         assert all((image.shape == images[0].shape for image in images)), "images do not have equal dimensions"
     
-    return images
+    return images, paths
 
 @deprecated
 def convert_to_binary(images):
@@ -165,15 +171,19 @@ def convert_to_gcode(binary_layers, usecs=600, grid_unit=0.5, z_unit=1.0, start_
 
     binary_layers, list of ndarrays of dimension height x width (elements are 0 or 1)
     usecs, delay for GCommand
-    grid_unit, conversion of pixel to g-code dimensions in x and y
-    z_unit, conversion of pixel to g-code dimensions in z
-    start_x, start x location in g-code
-    start_y, start y location in g-code
+    grid_unit, conversion of pixel to gcode dimensions in x and y
+    z_unit, conversion of pixel to gcode dimensions in z
+    start_x, start x location in gcode
+    start_y, start y location in gcode
     flip_flop, boolean flip scans of left and right to minimize tracking
+
+    return gcommand_layers, list of lists of GCommand objects
     """
-    gcommands = []
-    num_layers = len(binary_layers)
-    for grid_z in range(num_layers):
+    gcommand_layers = []
+
+    for grid_z in range(len(binary_layers)):
+        gcommands = []
+
         for grid_y in range(binary_layers[grid_z].shape[0]):
             if grid_y % 2 == 0 and flip_flop:
                 x_iterator = reversed(range(binary_layers[grid_z].shape[1]))
@@ -191,7 +201,9 @@ def convert_to_gcode(binary_layers, usecs=600, grid_unit=0.5, z_unit=1.0, start_
                                         usecs)
                     gcommands.append(gcommand)
 
-    return gcommands
+        gcommand_layers.append(gcommands)
+
+    return gcommand_layers
 
 def convert_to_material(pixel):
     """
@@ -215,30 +227,64 @@ def convert_to_material(pixel):
     else:
         print("Unrecognized color: (r: {}, g: {}, b: {})".format(red, green, blue))
 
-def write_gcode(gcommands, gcode_path, heatbed_temp=37, start_gcode='M42 P4 S250\n', end_gcode='M42 P4 S255\n'):
+def write_gcode(gcommand_layers, gcode_path, layer_names=None, heatbed_temp=37):
     """
-    Convert list of gcommands into .gcode file. Also prepend info
+    Convert list of gcommands into .gcode file. Also add start and end commands
 
-    gcommands, list of GCommand objects
+    gcommand_layers, list of lists of GCommand objects
     gcode_path, path to write output
-    heatbed_temp, start temp
+    layer_names, names for each layer, defaults to one index naming
+    heatbed_temp, start temp UNUSED
     """
     assert heatbed_temp <= 200, "{} > max temp 200".format(heatbed_temp)
+
+    if layer_names is not None:
+        assert len(layer_names) == len(gcommand_layers), \
+                "not enough names for all layers, remove layer_names to default naming"
+
+    start_gcode = 'M42 P4 S250\n'
+    end_gcode = 'M42 P4 S255\n'
 
     with open(gcode_path, 'w') as gcode_file:
         gcode_file.write(start_gcode)
         
-        for gcommand in gcommands:
-            gcode_file.write(str(gcommand))
+        for layer_index, gcommands in enumerate(gcommand_layers):
+            layer_name = layer_index + 1 if layer_names is None \
+                            else layer_names[layer_index]
+            gcode_file.write(";layer: {}\n".format(layer_name))
+
+            for gcommand in gcommands:
+                gcode_file.write(str(gcommand))
         
         gcode_file.write(end_gcode)
 
-def graph(gcommands, color_map=COLOR_MAP, title="Print Preview"):
+def graph(gcommand_layers, label_layers=False, layer_names=None, \
+            grid_unit=None, z_unit=None, start_x=None, start_y=None, \
+            color_map=COLOR_MAP, title="Print Preview"):
     """
-    Graph gcommands in 3d
+    Graph gcommands in 3d. Also put layer names at each location if flagged
 
-    gcommands, list of GCommand objects
+    gcommand_layers, list of lists of GCommand objects
+    label_layers, boolean to label layers, requires additional args
+    layer_names, names for each layer, if None don't label layers
+    grid_unit, conversion of pixel to gcode dimensions in x and y
+    z_unit, conversion of pixel to gcode dimensions in z
+    start_x, start x location in gcode
+    start_y, start y location in gcode
+    color_map, mapping from material to color name string arg
+    title, title for graph
     """
+    if label_layers:
+        assert grid_unit is not None, "if naming layers, need grid_unit"
+        assert z_unit is not None, "if naming layers, need z_unit"
+        assert start_x is not None, "if naming layers, need start_x"
+        assert start_y is not None, "if naming layers, need start_y"
+        if layer_names is not None:
+            assert len(layer_names) == len(gcommand_layers), \
+                    "not enough names for all layers, remove layer_names to default naming"
+
+    gcommands = list(itertools.chain.from_iterable(gcommand_layers))
+
     fig = plt.figure(figsize=(10,10))
     ax = fig.add_subplot(111, projection='3d')
     materials = set((gcommand.material for gcommand in gcommands))
@@ -269,6 +315,14 @@ def graph(gcommands, color_map=COLOR_MAP, title="Print Preview"):
     ymax = max((gcommand.y for gcommand in gcommands))
     zmin = min((gcommand.z for gcommand in gcommands))
     zmax = max((gcommand.z for gcommand in gcommands))
+
+    if label_layers:
+        layer_names = [str(i + 1) for i in range(len())] if layer_names is None else layer_names
+
+        float_distance = (ymax - ymin) / 10
+        for layer_index, layer_name in enumerate(layer_names):
+            ax.text(xmin, ymax + float_distance, layer_index * z_unit, layer_name, \
+                    zdir=(-1, 0, 0))
 
     ax.set_xlabel("x")
     ax.set_ylabel("y")
@@ -309,13 +363,16 @@ def main():
     Printing demo
     """
     data = load_json("config.json")
-    raws = load_raw_images(data["folder"])
+    raws, layer_names = load_raw_images(data["folder"])
     flipped_images = flip_images(raws)
 
-    gcommands = convert_to_gcode(flipped_images, usecs= data["usecs"], grid_unit=data["unitsize"], start_x=data["x"], start_y=data["y"])
+    gcommand_layers = convert_to_gcode(flipped_images, \
+                                    usecs=data["usecs"], grid_unit=data["unitsize"], \
+                                    z_unit=1.0, start_x=data["x"], start_y=data["y"])
     
-    write_gcode(gcommands, 'test.gcode', data["heatbed_temp"])
-    graph(gcommands)
+    write_gcode(gcommand_layers, 'test.gcode', layer_names=layer_names, heatbed_temp=data["heatbed_temp"])
+    graph(gcommand_layers, label_layers=True, grid_unit=data["unitsize"], z_unit=1.0, \
+            start_x=data["x"], start_y=data["y"], layer_names=layer_names)
 
 if __name__ == '__main__':
     main()
