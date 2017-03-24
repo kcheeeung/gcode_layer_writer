@@ -113,7 +113,7 @@ def load_raw_images(folder_path, check_dims=True):
     """
     images = []
 
-    for image_path in os.listdir(folder_path):
+    for image_path in sorted(os.listdir(folder_path)):
         try:
             image = skio.imread(os.path.join(folder_path, image_path))
             images.append(image)
