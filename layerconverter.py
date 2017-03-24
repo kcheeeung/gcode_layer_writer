@@ -30,6 +30,9 @@ MATERIAL_1 = "material 1"
 MATERIAL_2 = "material 2"
 MATERIAL_3 = "material 3"
 
+# noop material
+MATERIAL_NOOP = "noop"
+
 # color map for visualizing print
 COLOR_MAP = {MATERIAL_1: 'r', MATERIAL_2: 'g', MATERIAL_3: 'b'}
 
@@ -62,11 +65,13 @@ class GCommand(object):
         elif self.material == MATERIAL_2:
             return "T1; G0 E20; G1 X{} Y{} ;material: {}\nM400 ;wait for position\nG4 P100\nM430 S{} ;send pulse\n"\
             .format(self.x, self.y, self.material, self.usecs)
-        elif self.material == "valve 2":
+        elif self.material == MATERIAL_3:
             return "T2; G0 E30; G1 X{} Y{} ;material: {}\nM400 ;wait for position\nG4 P100\nM430 S{} ;send pulse\n"\
             .format(self.x, self.y, self.material, self.usecs)
-        else:
+        elif self.material == MATERIAL_NOOP:
             return ""
+
+        raise ValueError("Unknown material: {}".format(self.material))
 
 
 def write_json(filename):
@@ -192,7 +197,7 @@ def convert_to_material(pixel):
     green = pixel[1]
     blue = pixel[2]
     if (red, green, blue) == (255, 255, 255):
-        return None
+        return MATERIAL_NOOP
     if red == 255:
         return MATERIAL_1
     if green == 255:
@@ -252,7 +257,7 @@ def graph(gcommands, color_map=COLOR_MAP, title="Print Preview"):
 
     for material, split in \
         sorted([(material, split) for (material, split) \
-        in split_on_materials.items() if material is not None]):
+        in split_on_materials.items() if material is not MATERIAL_NOOP]):
         xs = [gcommand.x for gcommand in split]
         ys = [gcommand.y for gcommand in split]
         zs = [gcommand.z for gcommand in split]
