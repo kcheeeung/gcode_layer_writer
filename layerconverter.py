@@ -26,9 +26,14 @@ def deprecated(func):
 
 ### CONSTANTS
 
-# color map for visualizing print
-COLOR_MAP = {"valve 0": 'r', "valve 1": 'g', "valve 3": 'b'}
+MATERIAL_1 = "material 1"
+MATERIAL_2 = "material 2"
+MATERIAL_3 = "material 3"
 
+# color map for visualizing print
+COLOR_MAP = {MATERIAL_1: 'r', MATERIAL_2: 'g', MATERIAL_3: 'b'}
+
+###
 
 class GCommand(object):
     """Class representing a single action of the a microvalve"""
@@ -51,14 +56,14 @@ class GCommand(object):
     
     def __str__(self):
         """Returns gcode representation of command"""
-        if self.material == "valve 0":
-            return "T0; G0 E10; G1 X{} Y{} ;material {}\nM400 ;wait for position\nG4 P100\nM430 S{} ;send pulse"\
+        if self.material == MATERIAL_1:
+            return "T0; G0 E10; G1 X{} Y{} ;material: {}\nM400 ;wait for position\nG4 P100\nM430 S{} ;send pulse\n"\
             .format(self.x, self.y, self.material, self.usecs)
-        elif self.material == "valve 1":
-            return "T1; G0 E20; G1 X{} Y{} ;material {}\nM400 ;wait for position\nG4 P100\nM430 S{} ;send pulse"\
+        elif self.material == MATERIAL_2:
+            return "T1; G0 E20; G1 X{} Y{} ;material: {}\nM400 ;wait for position\nG4 P100\nM430 S{} ;send pulse\n"\
             .format(self.x, self.y, self.material, self.usecs)
         elif self.material == "valve 2":
-            return "T2; G0 E30; G1 X{} Y{} ;material {}\nM400 ;wait for position\nG4 P100\nM430 S{} ;send pulse"\
+            return "T2; G0 E30; G1 X{} Y{} ;material: {}\nM400 ;wait for position\nG4 P100\nM430 S{} ;send pulse\n"\
             .format(self.x, self.y, self.material, self.usecs)
         else:
             return ""
@@ -90,7 +95,6 @@ def load_json(filename):
     heatbed_temp = data["heatbed_temp"]
     usecs = data["usecs"]
     unitsize = data["unitsize"]
-    # offset = data["offset"]
     return data
 
 def load_raw_images(folder_path, check_dims=True):
@@ -174,12 +178,10 @@ def convert_to_gcode(binary_layers, usecs=600, grid_unit=0.5, z_unit=1.0, start_
             for grid_x in x_iterator:
                 pixel = binary_layers[grid_z][grid_y, grid_x]
                 material = convert_to_material(pixel)
-
                 gcommand = GCommand(grid_x * grid_unit + start_x, \
                                     grid_y * grid_unit + start_y, \
                                     grid_z * z_unit, \
                                     material, \
-                                    # binary_layers[grid_z][grid_y, grid_x], \
                                     usecs)
                 gcommands.append(gcommand)
 
@@ -192,11 +194,11 @@ def convert_to_material(pixel):
     if (red, green, blue) == (255, 255, 255):
         return None
     if red == 255:
-        return "valve 0"
+        return MATERIAL_1
     if green == 255:
-        return "valve 1"
+        return MATERIAL_2
     if blue == 255:
-        return "valve 3"
+        return MATERIAL_3
     else:
         print("Unrecognized color: (r: {}, g: {}, b: {})".format(red, green, blue))
 
@@ -213,19 +215,16 @@ def write_gcode(gcommands, gcode_path, heatbed_temp=37):
         # 'G28 X0 Y0 ;move X/Y to min endstops\n'+\
         # 'M190 S' + str(min(heatbed_temp, 200)) + ' ; set heatbed temp\nM117 Printing...'
         # end_gcode= 'M42 P4 S255\n' + 'M84 ;steppers off\nM140 S0 ; turn off heatbed\n;done printing'
-        start_gcode = 'M42 P4 S250'
+        start_gcode = 'M42 P4 S250\n'
 
-        end_gcode= 'M42 P4 S255'
+        end_gcode= 'M42 P4 S255\n'
         with open(gcode_path, 'w') as gcode_file:
             gcode_file.write(start_gcode)
-            gcode_file.write('\n')
             
             for gcommand in gcommands:
                 gcode_file.write(str(gcommand))
-                gcode_file.write('\n')
             
             gcode_file.write(end_gcode)
-            gcode_file.write('\n')
     else:
         print("{} > max temp 200".format(heatbed_temp))
 
@@ -252,8 +251,8 @@ def graph(gcommands, color_map=COLOR_MAP, title="Print Preview"):
         color_map = dict(zip(materials, colors))
 
     for material, split in \
-        [(material, split) for (material, split) \
-        in split_on_materials.items() if material is not None]:
+        sorted([(material, split) for (material, split) \
+        in split_on_materials.items() if material is not None]):
         xs = [gcommand.x for gcommand in split]
         ys = [gcommand.y for gcommand in split]
         zs = [gcommand.z for gcommand in split]
