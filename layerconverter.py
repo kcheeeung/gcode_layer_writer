@@ -136,11 +136,11 @@ class Gcommand(object):
         if self.material == MATERIAL_NOOP:
             return ""
         elif self.material in PULSE_COLOR_MAP.keys():
-            return "G1 X{} Y{} ;material: {}\nM400 ;wait for position\nG4 P100\nM430 S{} ;send pulse\n"\
-            .format(self.e, self.x, self.y, self.material, self.usecs)
+            return "T{} ;\nG1 X{} Y{} ;material: {}\nM400 ;wait for position\nG4 P100\nM430 S{} ;send pulse\n"\
+            .format(PULSE_T_MAP[self.material], self.x, self.y, self.material, self.usecs)
         elif self.material in EXTRUDER_COLOR_MAP.keys():
-            return "G0 X{} Y{} E{} ;material: {}\n"\
-            .format(self.x, self.y, self.e, self.material)
+            return "T{} ;\nG0 X{} Y{} E{} ;material: {}\n"\
+            .format(EXTRUDER_T_MAP[self.material], self.x, self.y, self.e, self.material)
         else:
             raise ValueError("Unknown material: {}".format(self.material))
 
@@ -169,7 +169,7 @@ def pulse_gcode(binary_layers, usecs=600, grid_unit=0.5, z_unit=1.0, start_x=40,
                     material = convert_to_material(pixel)
                     
                     if material is not MATERIAL_NOOP and material == k:
-                        gcommand = GCommand(x=grid_x * grid_unit + start_x, \
+                        gcommand = Gcommand(x=grid_x * grid_unit + start_x, \
                                             y=grid_y * grid_unit + start_y, \
                                             z=grid_z * z_unit, \
                                             material=material, \
@@ -182,8 +182,8 @@ def pulse_gcode(binary_layers, usecs=600, grid_unit=0.5, z_unit=1.0, start_x=40,
 def extrusion_gcode(binary_layers, grid_unit=0.5, z_unit=1.0, start_x=40, start_y=50, grid_z=0, start_e=0, grid_e=0, flip_flop=True):
     gcommands = []
     newgrid_e = grid_e
-    prev_material, prev_coord = "", [start_x, start_y, start_z,start_e]
-    curr_material, curr_coord = "", [start_x, start_y, start_z,start_e]
+    prev_material, prev_coord = "", [start_x, start_y, start_e]
+    curr_material, curr_coord = "", [start_x, start_y, start_e]
 
     # scan for connected components first
     for k, v in EXTRUDER_COLOR_MAP.items():
@@ -198,9 +198,9 @@ def extrusion_gcode(binary_layers, grid_unit=0.5, z_unit=1.0, start_x=40, start_
                     material = convert_to_material(pixel)
                     if material != curr_material:
                         if material is not MATERIAL_NOOP and material == k:
-                            gcommand = GCommand(x=prev_coord[0], \
+                            gcommand = Gcommand(x=prev_coord[0], \
                                                 y=prev_coord[1], \
-                                                z=prev_coord[2], \
+                                                z=grid_z, \
                                                 material=prev_material, \
                                                 e=prev_coord[3])
                             gcommands.append(gcommand)
@@ -219,9 +219,9 @@ def extrusion_gcode(binary_layers, grid_unit=0.5, z_unit=1.0, start_x=40, start_
                 # include y axis extrusion
                 if prev_coord[1] != curr_coord[1]:
                     if material is not MATERIAL_NOOP and material == k:
-                        gcommand = GCommand(x=prev_coord[0], \
+                        gcommand = Gcommand(x=prev_coord[0], \
                                             y=prev_coord[1], \
-                                            z=prev_coord[2], \
+                                            z=grid_z, \
                                             material=prev_material, \
                                             e=prev_coord[3])
                         gcommands.append(gcommand)
@@ -236,9 +236,9 @@ def extrusion_gcode(binary_layers, grid_unit=0.5, z_unit=1.0, start_x=40, start_
                         ]
                         # now extrude for the y
                         prev_coord = curr_coord
-                        gcommand = GCommand(x=prev_coord[0], \
+                        gcommand = Gcommand(x=prev_coord[0], \
                                             y=prev_coord[1], \
-                                            z=prev_coord[2], \
+                                            z=grid_z, \
                                             material=prev_material, \
                                             e=prev_coord[3])
                         gcommands.append(gcommand)
@@ -262,16 +262,51 @@ def convert_to_gcode(binary_layers, usecs=600, grid_unit=0.5, z_unit=1.0, start_
     start_y, start y location in g-code
     flip_flop, boolean flip scans of left and right to minimize tracking
     """
-
+    # could be horribly wrong
     gcommand_layers = []
     grid_e = 0
     for grid_z in range(len(binary_layers)):
         gcommands = []
-        gcommands += pulse_gcode(binary_layers, usecs, grid_unit, z_unit, start_x, start_y, grid_z, flip_flop)
-        gcommands, grid_e += extrusion_gcode(binary_layers, grid_unit, z_unit, start_x, start_y, grid_z, start_e, grid_e, flip_flop)
+        gcommands += pulse_gcode(binary_layers, usecs, grid_unit, z_unit, start_x, start_y, grid_z)
+        ext_gcommands, ext_grid_e = extrusion_gcode(binary_layers, grid_unit, z_unit, start_x, start_y, grid_z, start_e, grid_e)
+        gcommands += ext_gcommands
+        grid_e = ext_grid_e
+        #print type(gcommands)
         gcommand_layers.append(gcommands)
 
     return gcommand_layers
+
+def write_gcode(gcommand_layers, gcode_path, layer_names=None, heatbed_temp=37):
+    """
+    Convert list of gcommands into .gcode file. Also add start and end commands
+
+    gcommand_layers, list of lists of GCommand objects
+    gcode_path, path to write output
+    layer_names, names for each layer, defaults to one index naming
+    heatbed_temp, start temp UNUSED
+    """
+    assert heatbed_temp <= 200, "{} > max temp 200".format(heatbed_temp)
+
+    if layer_names is not None:
+        assert len(layer_names) == len(gcommand_layers), \
+                "not enough names for all layers, remove layer_names to default naming"
+
+    start_gcode = 'M42 P4 S250\n'
+    end_gcode = 'M42 P4 S255\n'
+
+    with open(gcode_path, 'w') as gcode_file:
+        gcode_file.write(start_gcode)
+        
+        for layer_index, gcommands in enumerate(gcommand_layers):
+            layer_name = layer_index + 1 if layer_names is None \
+                            else layer_names[layer_index]
+            gcode_file.write(";layer: {}\n".format(layer_name))
+
+
+            for gcommand in gcommands:
+                gcode_file.write(str(gcommand))
+        
+        gcode_file.write(end_gcode)
 
 
 def convert_to_material(pixel):
@@ -287,9 +322,9 @@ def convert_to_material(pixel):
         return MATERIAL_2
     if [red, green, blue] == [0,0,255]:
         return MATERIAL_3
-    if [red, green, blue] == [255,153,0]:
+    if [red, green, blue] == [255, 169, 0]:
         return MATERIAL_4
-    if [red, green, blue] == [255,255,0]:
+    if [red, green, blue] == [255,251,0]:
         return MATERIAL_5
     return ("Unrecognized color: (r: {}, g: {}, b: {})".format(red, green, blue))
     
@@ -342,9 +377,6 @@ def graph(gcommands):
 
 
 def main():
-    """
-    Cal printing demo
-    """
     data = load_json("config.json")
     raws = load_raw_images(data["folder"])
 
@@ -352,20 +384,18 @@ def main():
     
     size = (100, 120)
 
-    resizes = resize_images(raws, size)
-    binarys = convert_to_binary(resizes)
+    #resizes = resize_images(raws, size)
+    #binarys = convert_to_binary(resizes)
 
     # plt.figure()
     # plt.imshow(binarys[0], cmap=plt.get_cmap('gray'))
     # plt.show()
 
-    gcommand_layers, materials = convert_to_gcode(flipped_images, \
+    gcommand_layers = convert_to_gcode(raws, \
                                     usecs=data["usecs"], grid_unit=data["unitsize"], \
                                     z_unit=1.0, start_x=data["x"], start_y=data["y"], start_e=data["e"])
-    f = open("colors.txt", "w")
-    f.write(materials)
-    f.close()
-    #write_gcode(gcommand_layers, 'test.gcode', layer_names=layer_names, heatbed_temp=data["heatbed_temp"])
+
+    write_gcode(gcommand_layers, 'test.gcode', heatbed_temp=data["heatbed_temp"])
     #graph(gcommand_layers, label_layers=True, grid_unit=data["unitsize"], z_unit=1.0, \
     #        start_x=data["x"], start_y=data["y"], layer_names=layer_names)
 
