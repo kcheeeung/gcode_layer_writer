@@ -1,3 +1,13 @@
+# Credits
+# Thank you everyone for your hard work and decidation to the bioprinting project.
+# We wouldn't have gotten this far without your help.
+#
+# Software Engineering
+#
+# Mason Fujimoto, Class of 2017
+# Quinn Tran, Class of 2018
+# Katie Wu, Class of 2018
+
 from __future__ import division
 import json
 import os
@@ -35,52 +45,51 @@ MATERIAL_3 = "material 3"
 # noop material
 MATERIAL_NOOP = "noop"
 
-# color map for visualizing print
-COLOR_MAP = {MATERIAL_1: 'r', MATERIAL_2: 'g', MATERIAL_3: 'b'}
+# display only material
+MATERIAL_DISPLAY = 'display only'
 
-EXTRUDER_MAP = {MATERIAL_1: 0, MATERIAL_2: 1, MATERIAL_3: 2}
+# color map for visualizing print
+COLOR_MAP = {MATERIAL_1: 'r', MATERIAL_2: 'g', MATERIAL_3: 'b', MATERIAL_DISPLAY: 'k'}
+
 ###
 
 class GCommand(object):
     """Class representing a single action of the a microvalve"""
 
-    def __init__(self, x, y, z, e, material, usecs=100):
+    def __init__(self, x, y, z, material, usecs):
         """
         Init
 
         x, x location in gcode coords
         y, y location in gcode coords
         z, z location in gcode coords
-        e, e location in gcode coords (extrusion)
         material, material indicator
         usecs, delay after movement
         """
         self.x = x
         self.y = y
         self.z = z
-        self.e = e
         self.material = material
         self.usecs = usecs
     
     def __str__(self):
         """Returns gcode representation of command"""
-        if self.material == MATERIAL_NOOP:
+        if self.material == MATERIAL_1:
+            return "T0\nG1 X{} Y{} ; material: {}\nM430 V1 S{} ; send pulse\n"\
+            .format(self.x, self.y, self.material, self.usecs)
+        elif self.material == MATERIAL_2:
+            return "T1\nG1 X{} Y{} ; material: {}\nM430 V2 S{} ; send pulse\n"\
+            .format(self.x, self.y, self.material, self.usecs)
+        elif self.material == MATERIAL_3:
+            return "T2\nG1 X{} Y{} ; material: {}\nM430 V3 S{} ; send pulse\n"\
+            .format(self.x, self.y, self.material, self.usecs)
+        elif self.material == MATERIAL_NOOP:
             return ""
-        elif self.material in EXTRUDER_MAP.keys():
-            return "G0 E{}; G1 X{} Y{} ;material: {}\nM400 ;wait for position\nG4 P100\nM430 S{} ;send pulse\n"\
-            .format(self.e, self.x, self.y, self.material, self.usecs)
+        elif self.material == MATERIAL_DISPLAY:
+            return ""
+
         raise ValueError("Unknown material: {}".format(self.material))
 
-class TCommand(object):
-    """Switch extruders"""
-
-    def __init__(self, material):
-        self.material = material
-        self.extrudern = EXTRUDER_MAP[material]
-    
-    def __str__(self):
-        """Returns gcode representation of command"""
-        return "T{}; ".format(self.extrudern)
 
 def write_json(filename):
     """
@@ -88,7 +97,6 @@ def write_json(filename):
 
     filename, path to write to
     """
-    data = {"x":0, "y":0, "z":0, "e":0, "heatbed_temp":37, "usecs": 100, "unitsize":1, "folder":"test_layers"}
     with open(filename, "w") as fp:
         json.dump(data, fp)
 
@@ -105,7 +113,6 @@ def load_json(filename):
     x = data["x"]
     y = data["y"]
     z = data["z"]
-    e = data["e"]
     heatbed_temp = data["heatbed_temp"]
     usecs = data["usecs"]
     unitsize = data["unitsize"]
@@ -171,7 +178,7 @@ def resize_images(images, size):
     """
     return [imresize(image, size) for image in images]
 
-def convert_to_gcode(binary_layers, usecs=600, grid_unit=0.5, z_unit=1.0, start_x=40, start_y=50, start_e=0, flip_flop=True):
+def convert_to_gcode(binary_layers, usecs, grid_unit, start_x, start_y, z_unit, flip_flop=True):
     """
     Convert a list of binary images to gcommands. Iterates over each pixel
     and forms a GCommand object
@@ -187,29 +194,28 @@ def convert_to_gcode(binary_layers, usecs=600, grid_unit=0.5, z_unit=1.0, start_
     return gcommand_layers, list of lists of GCommand objects
     """
     gcommand_layers = []
-    grid_e = 0
+
     for grid_z in range(len(binary_layers)):
         gcommands = []
-        for k, v in EXTRUDER_MAP.items():
-            gcommands.append(TCommand(k))
-            for grid_y in range(binary_layers[grid_z].shape[0]):
-                if grid_y % 2 == 0 and flip_flop:
-                    x_iterator = reversed(range(binary_layers[grid_z].shape[1]))
-                else:
-                    x_iterator = range(binary_layers[grid_z].shape[1])
-                for grid_x in x_iterator:
-                    pixel = binary_layers[grid_z][grid_y, grid_x]
-                    material = convert_to_material(pixel)
 
-                    if material is not MATERIAL_NOOP and material == k:
-                        gcommand = GCommand(grid_x * grid_unit + start_x, \
-                                            grid_y * grid_unit + start_y, \
-                                            grid_z * z_unit, \
-                                            grid_e * grid_unit + start_e, \
-                                            material, \
-                                            usecs)
-                        gcommands.append(gcommand)
-                        grid_e += 1
+        for grid_y in range(binary_layers[grid_z].shape[0]):
+            if grid_y % 2 == 0 and flip_flop:
+                x_iterator = reversed(range(binary_layers[grid_z].shape[1]))
+            else:
+                x_iterator = range(binary_layers[grid_z].shape[1])
+            for grid_x in x_iterator:
+                pixel = binary_layers[grid_z][grid_y, grid_x]
+                material = convert_to_material(pixel)
+
+                if material is not MATERIAL_NOOP:
+                    gcommand = GCommand(grid_x * grid_unit + start_x, \
+                                        grid_y * grid_unit + start_y, \
+                                        grid_z * z_unit, \
+                                        material, \
+                                        usecs)
+                    gcommands.append(gcommand)
+
+        gcommands.sort(key=lambda gcommand: gcommand.material)
 
         gcommand_layers.append(gcommands)
 
@@ -228,6 +234,8 @@ def convert_to_material(pixel):
     blue = pixel[2]
     if (red, green, blue) == (255, 255, 255):
         return MATERIAL_NOOP
+    if (red, green, blue) == (0, 0, 0):
+        return MATERIAL_DISPLAY
     if red == 255:
         return MATERIAL_1
     if green == 255:
@@ -237,7 +245,7 @@ def convert_to_material(pixel):
     else:
         print("Unrecognized color: (r: {}, g: {}, b: {})".format(red, green, blue))
 
-def write_gcode(gcommand_layers, gcode_path, layer_names=None, heatbed_temp=37):
+def write_gcode(gcommand_layers, gcode_path, layer_names=None, heatbed_temp=0):
     """
     Convert list of gcommands into .gcode file. Also add start and end commands
 
@@ -246,22 +254,22 @@ def write_gcode(gcommand_layers, gcode_path, layer_names=None, heatbed_temp=37):
     layer_names, names for each layer, defaults to one index naming
     heatbed_temp, start temp UNUSED
     """
-    assert heatbed_temp <= 200, "{} > max temp 200".format(heatbed_temp)
+    assert heatbed_temp <= 150, "{} > max temp 150".format(heatbed_temp)
 
     if layer_names is not None:
         assert len(layer_names) == len(gcommand_layers), \
                 "not enough names for all layers, remove layer_names to default naming"
 
-    start_gcode = 'M42 P4 S250\n'
-    end_gcode = 'M42 P4 S255\n'
+    start_gcode = "M42 P4 S235\n"+"M42 P5 S235\n"+"M42 P6 S235\n"+"G28 ; home all axes\n"
+    end_gcode   = "M42 P4 S255\n"+"M42 P5 S255\n"+"M42 P6 S255\n"
 
-    with open(gcode_path, 'w') as gcode_file:
+    with open(gcode_path, "w") as gcode_file:
         gcode_file.write(start_gcode)
         
         for layer_index, gcommands in enumerate(gcommand_layers):
             layer_name = layer_index + 1 if layer_names is None \
                             else layer_names[layer_index]
-            gcode_file.write(";layer: {}\n".format(layer_name))
+            gcode_file.write(";LAYER: {}\n".format(layer_name))
 
             for gcommand in gcommands:
                 gcode_file.write(str(gcommand))
@@ -293,8 +301,7 @@ def graph(gcommand_layers, label_layers=False, layer_names=None, \
             assert len(layer_names) == len(gcommand_layers), \
                     "not enough names for all layers, remove layer_names to default naming"
 
-    gcommands = filter(lambda gcommand: isinstance(gcommand, GCommand), \
-        list(itertools.chain.from_iterable(gcommand_layers)))
+    gcommands = list(itertools.chain.from_iterable(gcommand_layers))
 
     fig = plt.figure(figsize=(10,10))
     ax = fig.add_subplot(111, projection='3d')
@@ -379,7 +386,7 @@ def main():
 
     gcommand_layers = convert_to_gcode(flipped_images, \
                                     usecs=data["usecs"], grid_unit=data["unitsize"], \
-                                    z_unit=1.0, start_x=data["x"], start_y=data["y"], start_e=data["e"])
+                                    start_x=data["x"], start_y=data["y"], z_unit=1.0)
     
     write_gcode(gcommand_layers, 'test.gcode', layer_names=layer_names, heatbed_temp=data["heatbed_temp"])
     graph(gcommand_layers, label_layers=True, grid_unit=data["unitsize"], z_unit=1.0, \
