@@ -36,7 +36,6 @@ def deprecated(func):
 
 	return new_func
 
-
 ### CONSTANTS
 MATERIAL_0 = "0"
 MATERIAL_1 = "1"
@@ -185,7 +184,7 @@ def resize_images(images, size):
 	"""
 	return [resize(image, size) for image in images]
 
-def convert_to_gcode(binary_layers, start_x, start_y,z_unit, usecs, grid_unit, layer_mode, flip_flop=True):
+def convert_to_gcode(binary_layers, start_x, start_y, z_unit, usecs, grid_unit, layer_mode, flip_flop=True):
 	"""
 	Convert a list of binary images to gcommands. Iterates over each pixel
 	and forms a GCommand object
@@ -250,7 +249,7 @@ def convert_to_material(pixel):
 	else:
 		print("Unrecognized color: (r: {}, g: {}, b: {})".format(red, green, blue))
 
-def convert_to_binary_material(pixel):
+def convert_to_binary_material(pixel, logic=1):
 	"""
 	Convert binary pixel value to printer material
 
@@ -258,7 +257,7 @@ def convert_to_binary_material(pixel):
 
 	return material constant; defaults to MATERIAL_0
 	"""
-	if pixel != 1:
+	if pixel != logic:
 		return MATERIAL_NOOP
 	else:
 		return MATERIAL_0
@@ -393,6 +392,34 @@ def flip_images(images):
 
 	return new_images
 
+def optimize_file_size(filepath):
+	"""
+	Removes the excess T0, T1, T2
+
+	Writes first instance of T, skipping until a different T is reached
+	"""
+	gcode_by_line = []
+	with open(filepath, "r") as fp:
+		for line in fp:
+			gcode_by_line.append(line)
+
+	first_T = True
+	with open(filepath, "w") as fp:
+		for line in gcode_by_line:
+			if line in ("T0;\n", "T1;\n", "T2;\n"):
+				if first_T:
+					fp.write(line)
+					previous = line
+					first_T = False
+				else:
+					if line == previous:
+						pass
+					else:
+						fp.write(line)
+						previous = line
+			else:
+				fp.write(line)
+
 def main():
 	"""
 	Printing demo
@@ -415,11 +442,12 @@ def main():
 										layer_mode="single")
 
 	write_gcode(gcommand_layers, data["output_name"]+".gcode", layer_names=layer_names, heatbed_temp=data["heatbed_temp"])
+	optimize_file_size(data["output_name"]+".gcode")
 
 	# graph(gcommand_layers, label_layers=True, grid_unit=data["unitsize"], z_unit=1.0, \
 	# 	  start_x=data["x"], start_y=data["y"], layer_names=layer_names)
 
 if __name__ == '__main__':
-	start_time = time.clock()
+	start_time = time.perf_counter()
 	main()
-	print("Finished in {} secs".format(time.clock() - start_time))
+	print("Finished in {} secs".format(time.perf_counter() - start_time))

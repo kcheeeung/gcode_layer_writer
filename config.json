@@ -5,9 +5,9 @@
 "usecs": 300,
 "unitsize": 1,
 "heatbed_temp": 37,
-"folder": "cal_logo_new",
-"output_name": "test",
+"folder": "animal",
+"output_name": "unicorn_test",
 "layer_mode (single/multi)": "single",
-"height": 100,
-"width" : 120
+"width" : 100,
+"height": 100
 }
