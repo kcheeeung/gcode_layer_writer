@@ -1,1 +1,11 @@
-{"folder": "forkevin", "x": 0, "y": 0, "z": 0, "unitsize": 0.5, "usecs": 400, "heatbed_temp": 37}
+{
+"x": 40,
+"y": 40,
+"z": 0,
+"usecs": 300,
+"unitsize": 1,
+"heatbed_temp": 37,
+"folder": "pure_colors",
+"output_name": "test",
+"layermode (single/multi)": "multi"
+}
