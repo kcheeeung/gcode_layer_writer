@@ -5,7 +5,9 @@
 "usecs": 300,
 "unitsize": 1,
 "heatbed_temp": 37,
-"folder": "pure_colors",
+"folder": "cal_logo_new",
 "output_name": "test",
-"layermode (single/multi)": "multi"
+"layer_mode (single/multi)": "single",
+"height": 100,
+"width" : 120
 }

@@ -20,7 +20,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import warnings
 import functools
 import itertools
-# from scipy.misc import imresize # depreciated in scipy 1.2
+import time
 
 def deprecated(func):
 	"""This is a decorator which can be used to mark functions
@@ -38,15 +38,15 @@ def deprecated(func):
 
 
 ### CONSTANTS
+MATERIAL_0 = "0"
 MATERIAL_1 = "1"
 MATERIAL_2 = "2"
-MATERIAL_3 = "3"
 
 # NOOP material
 MATERIAL_NOOP = "noop"
 
 # Color map for visualizing print
-COLOR_MAP = {MATERIAL_1: 'r', MATERIAL_2: 'g', MATERIAL_3: 'b'}
+COLOR_MAP = {MATERIAL_0: 'r', MATERIAL_1: 'g', MATERIAL_2: 'b'}
 
 class GCommand(object):
 	"""Class representing a single action of the a microvalve"""
@@ -69,20 +69,20 @@ class GCommand(object):
 	
 	def __str__(self):
 		"""Returns gcode representation of command"""
-		if self.material == MATERIAL_1:
+		if self.material == MATERIAL_0:
 			return "T0;\n"\
 				   "G1 X{} Y{}; Material: {}\n"\
-				   "M430 S{}; Send pulse\n"\
+				   "M430 V0 S{}; Send pulse\n"\
 			.format(self.x, self.y, self.material, self.usecs)
-		elif self.material == MATERIAL_2:
+		elif self.material == MATERIAL_1:
 			return "T1;\n"\
 				   "G1 X{} Y{}; Material: {}\n"\
-				   "M430 S{}; Send pulse\n"\
+				   "M430 V1 S{}; Send pulse\n"\
 			.format(self.x, self.y, self.material, self.usecs)
-		elif self.material == MATERIAL_3:
+		elif self.material == MATERIAL_2:
 			return "T2;\n"\
 				   "G1 X{} Y{}; Material: {}\n"\
-				   "M430 S{}; Send pulse\n"\
+				   "M430 V2 S{}; Send pulse\n"\
 			.format(self.x, self.y, self.material, self.usecs)
 		elif self.material == MATERIAL_NOOP:
 			return ""
@@ -115,10 +115,13 @@ def load_json(filename):
 	usecs = data["usecs"]
 	unitsize = data["unitsize"]
 	heatbed_temp = data["heatbed_temp"]
-	layermode = data["layermode (single/multi)"]
+	layer_mode = data["layer_mode (single/multi)"]
+	height = data["height"]
+	width =  data["width"]
 
 	assert heatbed_temp <= 100, "{} >= Max temp 100C. Lower heatbed temperature".format(heatbed_temp)
-	assert layermode == "single" or layermode == "multi", "\"{}\" is not a valid entry. You must enter \"single\" or \"multi\"".format(layermode)
+	assert layer_mode == "single" or layer_mode == "multi", "\"{}\" is not a valid entry. You must enter \"single\" or \"multi\"".format(layer_mode)
+	assert  height > 0 and width > 0, "Height: {} and Width: {} cannot be negative or zero".format(height, width)
 
 	return data
 
@@ -182,12 +185,12 @@ def resize_images(images, size):
 	"""
 	return [resize(image, size) for image in images]
 
-def convert_to_gcode(binary_layers, usecs, grid_unit, z_unit, start_x, start_y, flip_flop=True):
+def convert_to_gcode(binary_layers, start_x, start_y,z_unit, usecs, grid_unit, layer_mode, flip_flop=True):
 	"""
 	Convert a list of binary images to gcommands. Iterates over each pixel
 	and forms a GCommand object
 
-	binary_layers, list of ndarrays of dimension height x width (elements are 0 or 1)
+	binary_layers, list of ndarrays of dimension height x width (elements are 0 or 1 with binary or rbg in color)
 	usecs, delay for GCommand
 	grid_unit, conversion of pixel to gcode dimensions in x and y
 	z_unit, conversion of pixel to gcode dimensions in z
@@ -209,8 +212,10 @@ def convert_to_gcode(binary_layers, usecs, grid_unit, z_unit, start_x, start_y, 
 				x_iterator = range(binary_layers[grid_z].shape[1])
 			for grid_x in x_iterator:
 				pixel = binary_layers[grid_z][grid_y, grid_x]
-				material = convert_to_material(pixel)
-
+				if layer_mode == "multi":
+					material = convert_to_material(pixel)
+				elif layer_mode == "single":	
+					material = convert_to_binary_material(pixel)
 				if material is not MATERIAL_NOOP:
 					gcommand = GCommand(grid_x * grid_unit + start_x, \
 										grid_y * grid_unit + start_y, \
@@ -236,14 +241,27 @@ def convert_to_material(pixel):
 	blue = pixel[2]
 	if (red, green, blue) == (255, 255, 255):
 		return MATERIAL_NOOP
-	if red == 255:
+	elif red == 255:
+		return MATERIAL_0
+	elif green == 255:
 		return MATERIAL_1
-	if green == 255:
+	elif blue == 255:
 		return MATERIAL_2
-	if blue == 255:
-		return MATERIAL_3
 	else:
 		print("Unrecognized color: (r: {}, g: {}, b: {})".format(red, green, blue))
+
+def convert_to_binary_material(pixel):
+	"""
+	Convert binary pixel value to printer material
+
+	pixel (elements 0 or 1) ndarray slice
+
+	return material constant; defaults to MATERIAL_0
+	"""
+	if pixel != 1:
+		return MATERIAL_NOOP
+	else:
+		return MATERIAL_0
 
 def write_gcode(gcommand_layers, gcode_path, layer_names=None, heatbed_temp=37):
 	"""
@@ -258,7 +276,8 @@ def write_gcode(gcommand_layers, gcode_path, layer_names=None, heatbed_temp=37):
 		assert len(layer_names) == len(gcommand_layers), \
 				"not enough names for all layers, remove layer_names to default naming"
 
-	start_gcode = "M42 P4 S245\n"
+	start_gcode = "M42 P4 S245\n"\
+				  "G28; Home axes\n"
 	end_gcode = "M42 P4 S255\n"
 
 	with open(gcode_path, 'w') as gcode_file:
@@ -379,23 +398,28 @@ def main():
 	Printing demo
 	"""
 	data = load_json("config.json")
+	raws, layer_names = load_raw_images(data["folder"])
+	flipped_images = flip_images(raws)
 
-	if data["layermode (single/multi)"] == "multi":
-		raws, layer_names = load_raw_images(data["folder"])
-		flipped_images = flip_images(raws)
-
+	if data["layer_mode (single/multi)"] == "multi":
 		gcommand_layers = convert_to_gcode(flipped_images, \
+										start_x=data["x"], start_y=data["y"], z_unit=1, \
 										usecs=data["usecs"], grid_unit=data["unitsize"], \
-										z_unit=1.0, start_x=data["x"], start_y=data["y"])
-		
-		write_gcode(gcommand_layers, data["output_name"]+".gcode", layer_names=layer_names, heatbed_temp=data["heatbed_temp"])
+										layer_mode = "multi")
+	elif data["layer_mode (single/multi)"] == "single":
+		resized_images = resize_images(flipped_images, (data["height"], data["width"]))
+		binary_images = convert_to_binary(resized_images)
+		gcommand_layers = convert_to_gcode(binary_images, \
+										start_x=data["x"], start_y=data["y"], z_unit=1, \
+										usecs=data["usecs"], grid_unit=data["unitsize"], \
+										layer_mode="single")
 
-		# graph(gcommand_layers, label_layers=True, grid_unit=data["unitsize"], z_unit=1.0, \
-		#       start_x=data["x"], start_y=data["y"], layer_names=layer_names)
-	elif data["layermode (single/multi)"] == "single":
-		pass
+	write_gcode(gcommand_layers, data["output_name"]+".gcode", layer_names=layer_names, heatbed_temp=data["heatbed_temp"])
 
-	print("Finished execution")
+	# graph(gcommand_layers, label_layers=True, grid_unit=data["unitsize"], z_unit=1.0, \
+	# 	  start_x=data["x"], start_y=data["y"], layer_names=layer_names)
 
 if __name__ == '__main__':
+	start_time = time.clock()
 	main()
+	print("Finished in {} secs".format(time.clock() - start_time))
