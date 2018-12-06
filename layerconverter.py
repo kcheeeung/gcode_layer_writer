@@ -4,9 +4,10 @@
 #
 # Software Engineering
 #
-# Mason Fujimoto, Class of 2017
-# Quinn Tran, Class of 2018
-# Katie Wu, Class of 2018
+# Kevin Cheung      Class of 2016
+# Mason Fujimoto    Class of 2017
+# Quinn Tran        Class of 2018
+# Katie Wu          Class of 2018
 
 from __future__ import division
 import json
@@ -235,16 +236,16 @@ def convert_to_material(pixel):
 
 	return material constant if possible, otherwise ignore and print warning
 	"""
-	red = pixel[0]
+	red   = pixel[0]
 	green = pixel[1]
-	blue = pixel[2]
+	blue  = pixel[2]
 	if (red, green, blue) == (255, 255, 255):
 		return MATERIAL_NOOP
-	elif red == 255:
+	elif red   == 255:
 		return MATERIAL_0
 	elif green == 255:
 		return MATERIAL_1
-	elif blue == 255:
+	elif blue  == 255:
 		return MATERIAL_2
 	else:
 		print("Unrecognized color: (r: {}, g: {}, b: {})".format(red, green, blue))
@@ -275,9 +276,13 @@ def write_gcode(gcommand_layers, gcode_path, layer_names=None, heatbed_temp=37):
 		assert len(layer_names) == len(gcommand_layers), \
 				"not enough names for all layers, remove layer_names to default naming"
 
-	start_gcode = "M42 P4 S245\n"\
-				  "G28; Home axes\n"
-	end_gcode = "M42 P4 S255\n"
+	start_gcode =	"G28; Home axes\n"\
+					"M42 P4 S245\n"
+
+	end_gcode	=	"M84; Motor off\n"\
+					"M42 P4 S255\n"\
+				 	"M42 P5 S255\n"\
+				 	"M42 P6 S255\n"
 
 	with open(gcode_path, 'w') as gcode_file:
 		gcode_file.write(start_gcode)
