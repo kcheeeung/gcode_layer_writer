@@ -5,8 +5,8 @@
 "usecs": 300,
 "unitsize": 1,
 "heatbed_temp": 37,
-"folder": "cal_logo",
-"output_name": "cal_logo",
+"folder": "cal_logo_old",
+"output_name": "cal_logo_oldpython",
 "layer_mode (single/multi)": "single",
 "width" : 100,
 "height": 100
