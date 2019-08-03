@@ -233,18 +233,16 @@ public class LayerConverter {
         try {
             String fileName = outputName + ".gcode";
             BufferedWriter out = new BufferedWriter(new FileWriter(fileName));
-            int approxLines = 0;
             for (List<Gcommand> list : finalResult) {
                 out.write(";" + list.get(0).getNameID() + "\n");
                 for (Gcommand gc : list) {
                     out.write(gc.toString());
-                    approxLines++;
                 }
             }
             out.close();
             startSize = new File(fileName).length();
 
-            StringBuilder optimize = new StringBuilder(approxLines);
+            StringBuilder optimize = new StringBuilder();
             optimize.append(START_GCODE);
             BufferedReader in = new BufferedReader(new FileReader(fileName));
             String line, prevHead = null;
